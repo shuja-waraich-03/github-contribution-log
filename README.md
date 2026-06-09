@@ -1,17 +1,29 @@
 # github-contribution-log
 
-# Contribution [#]: [Issue Title]
+# Contribution [#]: 1845
 
-**Contribution Number:** [1 / 2 / 3]  
-**Student:** [Your Name]  
-**Issue:** [GitHub issue link]  
-**Status:** [Phase I / Phase II / Phase III / Phase IV] [In Progress / Complete]
+**Contribution Number:** 2
+
+**Student:** Shuja 
+
+**Issue:** https://github.com/RimSort/RimSort/issues/1845
+
+**Status:** Phase I 
 
 ---
 
 ## Why I Chose This Issue
 
-[1-2 paragraphs explaining why this issue interests you, how it matches your skills/learning goals, what you hope to learn]
+Why I Chose This IssueI chose issue #1845 "Add HTTP retry logic with backoff" because it aligns with my Python experience and my goal to improve my understanding of robust networking and error-handling patterns. The issue is explicitly labeled `"good first issue"` and `"Code refactoring"`, making it a perfect entry point for a new contributor.
+
+I'm interested in this because:
+1. I understand the basics of handling HTTP requests, but implementing a structured exponential backoff strategy with urllib3 and requests adapters will deepen my practical backend skills.
+2. The implementation area is highly centralized—all traffic goes through a single utility file (app/utils/http.py)—meaning the scope is well-contained and won't require navigating a massive, sprawling codebase.The issue outlines clear edge cases to consider, such as handling rate limits ($429$ status codes) via Retry-After headers and ensuring streaming downloads aren't broken by partial reads, which provides a great technical challenge.
+3. I want to learn how this project structures thread-safe utility functions without sharing session states.From reading the issue thread, I understand the current problem is that failed network requests immediately raise an error with no retry mechanism, which can cause unnecessary crashes during transient network hiccups. 
+   
+My contribution will build on top of a recent security audit (PR #1841) to make the application's network layer significantly more resilient.
+
+Left a comment on the issue introducing myself to express my interest in working on it and to ask for initial pointers on getting started in the codebase.
 
 ---
 
