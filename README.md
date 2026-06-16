@@ -31,7 +31,7 @@ Left a comment on the issue introducing myself to express my interest in working
 
 ### Problem Description
 
-[In your own words, what's broken or missing?]
+Https request Issue
 
 ### Expected Behavior
 
