@@ -8,7 +8,7 @@
 
 **Issue:** https://github.com/RimSort/RimSort/issues/1845
 
-**Status:** Phase I 
+**Status:** Phase II
 
 ---
 
