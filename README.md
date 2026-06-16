@@ -29,28 +29,22 @@ Left a comment on the issue introducing myself to express my interest in working
 
 ## Understanding the Issue
 
-### Problem Description
+## Problem Description
+The core application code relies heavily on making direct HTTP web requests (such as checking for software updates, pulling mod information, or hitting Steam APIs). Currently, these requests are executed without any safety nets. If a user experiences a minor, split-second network drop or if the remote server returns a temporary error, the network layer instantly gives up and throws an unhandled exception, causing the application to crash or fail key tasks unnecessarily.
 
-Https request Issue
-Fixing git issue
+## Expected Behavior
+When a network request encounters a transient failure (e.g., a physical connection timeout, a `500 Internal Server Error`, or a `429 Too Many Requests` rate limit), the application should gracefully pause, wait briefly, and try the request again. It should use an exponential backoff strategy so it waits slightly longer between each attempt before finally giving up.
 
-### Expected Behavior
+## Current Behavior
+The application invokes standard requests (`requests.get`) directly. It immediately raises an error on the very first sign of a network hiccup or bad status code. No retry mechanism or backoff delays exist.
 
-[What should happen?]
-
-### Current Behavior
-
-[What actually happens?]
-
-### Affected Components
-
-[Which parts of the codebase are involved?]
+## Affected Components
+- `app/utils/http.py`: This is the centralized network utility file where all HTTP operations pass through. The core functions (`get`, `post`, etc.) need to be refactored here so that the entire codebase inherits the safer retry mechanics automatically.
 
 ---
 
 ## Reproduction Process
 
-### Environment Setup
 
 
 ## Steps to Reproduce
@@ -79,15 +73,18 @@ Error message: HTTPSConnectionPool(host='this-domain-does-not-exist-at-all-xyz.c
 
 ## Solution Approach
 
-### Analysis
+## Analysis
+The root cause is that the HTTP utilities inside `app/utils/http.py` do not implement an explicit session engine configured with structural fault handling. By default, the `requests` module executes calls in isolation. Without mounting an `HTTPAdapter` armed with explicit `urllib3` `Retry` logic, the client possesses zero internal loops to intercept, evaluate, and retry failed tcp/status hooks.
 
-[Your analysis of the root cause - what's causing the issue?]
+## Proposed Solution
+The fix involves building a centralized, thread-safe configuration directly inside `app/utils/http.py`. Instead of invoking bare requests, we will configure a `requests.Session()` within the request cycle. We will import `Retry` from `urllib3.util` and mount an `HTTPAdapter` to this session. This adapter will be explicitly instructed to intercept structural failure status codes (like `500`, `502`, `503`, `504`, and `429`) and safely retry up to 3 times using an exponential backoff factor.
 
-### Proposed Solution
+## Implementation Plan
+Using UMPIRE framework (adapted):
 
-[High-level description of your fix approach]
+*Understand:* The application fails immediately on any transient network drop or temporary server error because `app/utils/http.py` does not possess a retry framework.
 
-### Implementation Plan
+*Match:* Standard Python resilience design patterns rely on configuring `urllib3.util.Retry` structures wrapped cleanly inside a `requests.adapters.HTTPAdapter` session registry.
 
 *Plan:* 
 - **Centralize an HTTP Session Wrapper:** Modify `app/utils/http.py` to utilize a persistent or cleanly instantiated `requests.Session()` object instead of making bare `requests.get()` calls.
