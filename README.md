@@ -52,19 +52,28 @@ Fixing git issue
 
 ### Environment Setup
 
-[Notes on setting up your local development environment - challenges you faced, how you solved them]
 
-### Steps to Reproduce
+## Steps to Reproduce
+1. Create a isolated test script named `test_http.py` in the root directory of the repository to call the HTTP utility directly.
+2. Add code to execute `app.utils.http.get()` pointing to a completely non-existent domain (e.g., `https://this-domain-does-not-exist-at-all-xyz.com`) or call `.raise_for_status()` on a forced failing endpoint to trigger a clear exception.
+3. Run the script inside the project's virtual environment using `uv run python test_http.py`.
+4. **Observed result:** The script immediately throws a `ConnectionError` or an unhandled HTTP exception and terminates instantly. There is no pause, delay, or subsequent attempt to retry the connection, proving that the application has zero fallback mechanisms for transient network bugs.
 
-1. [Step 1]
-2. [Step 2]
-3. [Observed result]
+
 
 ### Reproduction Evidence
 
-- **Commit showing reproduction:** [Link to commit in your fork]
-- **Screenshots/logs:** [If applicable]
-- **My findings:** [What you discovered during reproduction]
+- **Commit showing reproduction:** [[Branch wit Bug Reproduced]](https://github.com/shuja-waraich-03/RimSort.git)
+- **Screenshots/logs:** 
+  
+``` Testing RimSort HTTP client...
+Sending request to: https://this-domain-does-not-exist-at-all-xyz.com
+
+--- RESULT ---
+The request failed with error type: ConnectionError
+Error message: HTTPSConnectionPool(host='this-domain-does-not-exist-at-all-xyz.com', port=443): Max retries exceeded with url: / (Caused by NameResolutionError("HTTPSConnection(host='this-domain-does-not-exist-at-all-xyz.com', port=443): Failed to resolve 'this-domain-does-not-exist-at-all-xyz.com' ([Errno 8] nodename nor servname provided, or not known)")) 
+```
+
 
 ---
 
@@ -80,22 +89,11 @@ Fixing git issue
 
 ### Implementation Plan
 
-Using UMPIRE framework (adapted):
-
-**Understand:** [Restate the problem]
-
-**Match:** [What similar patterns/solutions exist in the codebase?]
-
-**Plan:** [Step-by-step implementation plan]
-1. [Modify file X to do Y]
-2. [Add function Z]
-3. [Update tests]
-
-**Implement:** [Link to your branch/commits as you work]
-
-**Review:** [Self-review checklist - does it follow the project's contribution guidelines?]
-
-**Evaluate:** [How will you verify it works?]
+*Plan:* 
+- **Centralize an HTTP Session Wrapper:** Modify `app/utils/http.py` to utilize a persistent or cleanly instantiated `requests.Session()` object instead of making bare `requests.get()` calls.
+- **Configure urllib3 Retry Logic:** Import `Retry` from `urllib3.util` and mount a custom `HTTPAdapter` to the session.
+- **Implement Exponential Backoff:** Configure the adapter with a maximum of 3 retries, a backoff factor (e.g., `0.5` or `1`), and status fault hooks specifically listening for `429` (Rate Limited) and `5xx` server-side errors.
+- **Verification:** Re-run the reproduction test script to visually and programmatically confirm that the execution pauses and attempts backoffs multiple times before raising a final failure.
 
 ---
 
