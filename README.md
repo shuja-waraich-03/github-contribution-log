@@ -8,7 +8,7 @@
 
 **Issue:** https://github.com/RimSort/RimSort/issues/1845
 
-**Status:** Phase I 
+**Status:** Phase III In Progress 
 
 ---
 
@@ -96,38 +96,66 @@ Using UMPIRE framework (adapted):
 
 ## Testing Strategy
 
+I added a new test file at `tests/utils/test_http.py`, modeled on the existing
+patterns in `tests/utils/` (e.g. `test_url_validation.py`), which uses
+`unittest.mock` to patch `requests` rather than hitting the network. The retry
+behavior itself is configuration on the mounted adapter, so the tests assert
+that configuration is present — this is exactly the regression that would have
+existed before the fix (no retry adapter mounted at all).
+
 ### Unit Tests
 
-- [ ] Test case 1: [Description]
-- [ ] Test case 2: [Description]
-- [ ] Test case 3: [Description]
+- [x] Test case 1: `get()` applies `DEFAULT_TIMEOUT` and dispatches the `GET` method to the correct URL.
+- [x] Test case 2: An explicitly passed `timeout=` is preserved and not overwritten by the default.
+- [x] Test case 3: `post()` and `head()` dispatch to the `POST` and `HEAD` methods respectively.
+- [x] Test case 4: A retry-enabled `HTTPAdapter` is mounted for both `http://` and `https://` with `total=3` and `backoff_factor=0.5`.
+- [x] Test case 5: The transient status codes `429, 500, 502, 503, 504` are all in the retry `status_forcelist`.
+- [x] Test case 6: `raise_on_status` is `False`, preserving the existing contract that callers decide when to call `response.raise_for_status()`.
 
 ### Integration Tests
 
-- [ ] Integration scenario 1
-- [ ] Integration scenario 2
+- [x] Ran the existing HTTP-adjacent suites to confirm no regressions: `tests/utils/test_http_downloader.py` and `tests/utils/test_http_download_worker.py` (19 tests, all passing). These exercise the streaming download paths that depend on `http.get(..., stream=True)`.
 
 ### Manual Testing
 
-[What you tested manually and results]
+- Re-ran the Phase I reproduction script (`uv run python test_http.py`) against the dead domain. A DNS-resolution failure (`NameResolutionError`) is not a transient/retryable condition, so it still surfaces quickly — this is correct behavior; retries target connection timeouts and 429/5xx responses, not nonexistent hosts.
+- Verified linting/formatting/typing locally:
+  - `uv run ruff check app/utils/http.py tests/utils/test_http.py` → all checks passed
+  - `uv run ruff format --check ...` → already formatted
+  - `uv run mypy app/utils/http.py` → no issues found
+  - `uv run pytest tests/utils/test_http.py -q` → 6 passed
 
 ---
 
 ## Implementation Notes
 
-### Week [X] Progress
+### Week Progress (Jun 23)
 
-[What you built this week, challenges faced, decisions made]
+**What I built:**
+- Refactored `app/utils/http.py` so the three public wrappers (`get`, `post`, `head`) route through a single private `_request()` helper instead of calling `requests.get/post/head` directly.
+- `_request()` builds a `requests.Session` via a `_new_session()` helper that mounts an `HTTPAdapter` configured with `urllib3.util.retry.Retry`:
+  - `total=3` retries with `backoff_factor=0.5` (waits ~0.5s → 1s → 2s between attempts).
+  - `status_forcelist=(429, 500, 502, 503, 504)` so rate limits and server errors are retried.
+  - `allowed_methods=frozenset(["GET", "HEAD", "POST"])`.
+  - `raise_on_status=False` so the final response is returned and callers keep using `response.raise_for_status()` as before.
+- Pulled the retry parameters out into module-level constants (`DEFAULT_RETRIES`, `DEFAULT_BACKOFF_FACTOR`, `RETRY_STATUS_CODES`) so they're documented and easy to tune.
+- Added `tests/utils/test_http.py` with 6 unit tests (see Testing Strategy).
 
-### Week [Y] Progress
-
-[Continue documenting as you work]
+**Challenges faced / decisions made:**
+- **Thread safety:** the issue specifically calls out wanting thread-safe utilities "without sharing session states." A `requests.Session` is not safe to share across threads, so instead of one module-level session I create a *fresh* session per request inside `_request()`. This keeps the retry config centralized while avoiding shared mutable state.
+- **Streaming downloads:** the issue flags that streaming must not break. I audited the callers first (`grep` for `http.get`/`http.post`/`http.head`) and found several `stream=True` users — `http_downloader.py:175`, `update_utils.py:1413`, `installer.py:145`, `steamcmd/wrapper.py:525` (used as `with http.get(...) as rx:`), plus a couple of views. I confirmed that closing the session on return does **not** kill an in-flight streamed response, because the connection is checked out of the pool and only released once the body is consumed — this is the same behavior as `requests`' own top-level `requests.get(stream=True)`, which also wraps the call in `with Session() as ...`. Verified by running the existing download-worker tests.
+- **Preserving the existing contract:** the previous code returned the response without raising on bad status. Setting `raise_on_status=False` keeps that contract so I didn't have to touch any of the ~15 call sites.
+- **DNS failures aren't retryable:** when I re-ran the reproduction script the dead-domain test still fails fast. I initially expected a delay, then realized a `NameResolutionError` is not a transient condition urllib3 retries — which is the correct, intended behavior.
 
 ### Code Changes
 
-- **Files modified:** [List]
-- **Key commits:** [Links to important commits]
-- **Approach decisions:** [Why you chose certain approaches]
+- **Files modified:**
+  - `app/utils/http.py` — added retry/backoff session, helper functions, and config constants.
+  - `tests/utils/test_http.py` — new unit test file (6 tests).
+- **Key commits (branch `feature/http-retry`):**
+  - `feat(http): add retry with exponential backoff to HTTP utilities`
+  - `test(http): cover retry configuration and request wrappers`
+- **Approach decisions:** Per-request session for thread safety; constants for tunable retry params; `raise_on_status=False` to avoid changing the response contract for existing callers.
 
 ---
 
